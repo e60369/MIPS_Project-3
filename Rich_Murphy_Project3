@@ -1,0 +1,107 @@
+.org 0x10000000
+
+########################################## Initializations #################################################
+li $sp, 0x10fffffc # Initialize the stack pointer.
+li $a0, 0x00000000 # Set aside for print function.
+li $a1, 0x00000000 # Head pointer.
+li $a2, 0x00000000 # Tail pointer.
+li $a3, 0x00000000 # Copy of head pointer.
+li $v0, 0x00000000 # Handling register for incoming character.
+li $t0, 0xf0000000 # Assign the UART to register $t0.
+li $t1, 0x00000000 # Temporary holding place for UART status.
+li $t2, 0x00000061 # Lowercase "a" in ascii (i.e. the lowest value we will be using).
+li $t3, 0x00000000 # Register used for slt comparisons.
+li $t4, 0x00000020 # This is the amount we need to add to any UC letters we receive to make them LC.
+li $t5, 0x00000020 # ASCII value of a space.
+li $t6, 0x0000002e # ASCII value of a period.
+li $t7, 0x00000001 # Value of an empty UART status register (i.e. nothing waiting in receive buffer).
+li $s0, 0x00000000 # Upper Character in current string.
+li $s1, 0x00000000 # Lower Character in current string.
+li $s2, 0x00000000 # String length.
+
+########################################## Establish Array ##################################################
+array_ptr:	# Label pointing to 100 word array.
+	.space 100
+	li $a1, array_ptr # Assigns head pointer with starting address.
+	move $a2, $a1 # Copy head pointer to tail pointer so they begin at the same location.
+
+################################ Main (UART Polling & Array Fill) ###########################################
+main:
+	lw  $t1, 4($t0) # Get the UART status.
+	beq $t1, $t7, main # Loop until status register changes state.
+	nop
+	andi $t1, $t1, 0b10	# Bitmask for the ready bit.
+	lw  $v0, 8($t0) # Load incoming byte into $v0 from the receive buffer.
+	beq $v0, $t5, Clear_Ready_Flag # If character is a space, we ignore it by clearing the ready flag.
+	nop
+	beq $v0, $t6, Carry_On # If character is a period, skip conversion just put into the array.
+	nop
+	jal Conversion # Sends non space and period characters to get converted to lowercase if not already.
+	nop
+Carry_On:
+	sw  $t1, 0($t0) # Clear the UART for the next character.
+	sw $v0, 0($a2) # Store character into array.
+	addiu $a2,$a2,4 # Increment the array pointer to the next position.
+	lw  $t1, 4($t0) # Get the uart status.
+	beq $v0, $t6, Palindrome_Check # Branches to palindrome check if a period is received.
+	nop
+j main
+nop
+
+################################ Used to skip spaces received ################################################
+Clear_Ready_Flag:
+	sw  $t1, 0($t0) # Clear the ready flag in the UART if we get a space and just get next byte.
+j main
+nop
+
+########################### Conversion of Incoming Characters to Lowercase ###################################
+Convert_to_Lowercase:
+	addu $v0, $v0, $t4 # Adds 0x20 to $v0 if necessary.
+	j Carry_On # Get back to main and put the converted value into the array.
+	nop
+Conversion:
+	slt $t3, $v0, $t2 # True if $v0 is less than 0x00000061 (i.e. it's uppercase).
+	bne $t3, $0, Convert_to_Lowercase # Convert if necessary.
+	nop
+	jr $ra # Jump back to main and put values which didn't need conversion into the array.
+	nop
+
+####################################### Palindrome Algorithm ################################################
+Palindrome_Check:
+	addiu $a2, $a2, -8 # Decrement $a2 by two words to get the address of last letter in the string.
+	move $a3, $a1 # Make a copy of the head pointer that I can manipulate later w/o changing $a1.
+	subu $s2, $a2, $a3 # Determine string length.
+	beq $s2, $0, Pal # Single letter strings are palindromes.
+	nop
+Check_Loop:
+	lw $s0, 0($a3) # Load upper most char from head pointer address.
+	lw $s1, 0($a2) # Load lower most char from tail pointer address.
+	bne $s1, $s0, Not_Pal # If $s1 and $s0 don't match it isn't a palindrome.
+	nop
+incr_loop:
+	addiu $a2, $a2, -4 # Decrement tail.
+	addiu $a3, $a3, 4 # Increment head.
+	slt $t3, $a3, $a2  # Check to see if head and tail are equal.
+	bne $t3, $0, Check_Loop # Keep looping until a.) we are at innermost chars or b.) it fails the check.
+	nop
+	j Pal
+	nop
+
+###############################################Print Results####################################################
+Pal:
+	li $a0, 1 # Value of $a0 for printing "Yes".
+	call project3_print # Print a "Yes".
+	move $a2, $a1 # Resets tail pointer address so we don't go over 100 words on later strings.
+	j main # Jump to main to get next string.
+	nop
+Not_Pal:
+	li $a0, 0 # Value of $a0 for printing "No".
+	call project3_print # Print a "No".
+	move $a2, $a1  # Resets tail pointer address so we don't go over 100 words on later strings.
+	j main # Jump to main to get next string.
+	nop
+
+
+
+
+
