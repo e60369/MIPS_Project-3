@@ -1,0 +1,84 @@
+# Written by Christopher Mar
+# For use with ASU CSE 230 Project 3 only
+
+li $a0, control_message_p3
+jal libplp_uart_write_string_p3
+nop
+control_flow_trap_p3:
+	j control_flow_trap_p3
+	nop
+
+string_yes_p3:
+	.asciiz "Yes\n"
+
+string_no_p3:
+	.asciiz " No\n"
+
+control_message_p3:
+	.asciiz "Error:\nProgram entered project3_print.asm due to missing control flow at the end of\nmain.asm\n"
+
+project3_print:
+	push $ra
+	
+	bne $a0 $0, set_ptr_yes
+		nop
+		li $a0, string_no_p3
+		j print_string_p3
+		nop
+	
+	set_ptr_yes:
+		li $a0, string_yes_p3
+
+	print_string_p3:
+	jal libplp_uart_write_string_p3
+	nop
+	pop $ra
+	return
+
+
+# From PLP UART Library
+
+libplp_uart_write_p3:
+	lui $t0, 0xf000		#uart base address
+libplp_uart_write_loop_p3:
+	lw  $t1, 4($t0)		#get the uart status
+	andi $t1, $t1, 0x01	#mask for the cts bit
+	beq $t1, $zero, libplp_uart_write_loop_p3
+	nop
+	sw  $a0, 12($t0)	#write the data to the output buffer
+	sw  $t1, 0($t0)		#send the data!
+	jr $31
+	nop
+
+libplp_uart_write_string_p3: 	#we have a pointer to the string in a0, just loop and increment until we see a \0
+	move $t9, $31		#save the return address
+	move $t8, $a0		#save the argument
+libplp_uart_write_string_multi_word_p3:
+	lw $a0, 0($t8)		#first 1-4 characters
+	ori $t0, $zero, 0x00ff  #reverse the word to make it big endian
+	and $t1, $t0, $a0	#least significant byte
+	sll $t1, $t1, 24
+	srl $a0, $a0, 8
+	and $t2, $t0, $a0	#second byte
+	sll $t2, $t2, 16
+	srl $a0, $a0, 8
+	and $t3, $t0, $a0	#third byte
+	sll $t3, $t3, 8
+	srl $a0, $a0, 8		#last byte in a0
+	or $a0, $t1, $a0
+	or $a0, $t2, $a0
+	or $a0, $t3, $a0
+	beq $a0, $zero, libplp_uart_write_string_done_p3
+	nop
+	ori $t7, $zero, 4
+libplp_uart_write_string_loop_p3:
+	jal libplp_uart_write_p3	#write this byte
+	addiu $t7, $t7, -1
+	srl $a0, $a0, 8
+	bne $a0, $zero, libplp_uart_write_string_loop_p3
+	nop
+	beq $t7, $zero, libplp_uart_write_string_multi_word_p3
+	addiu $t8, $t8, 4	#increment for the next word
+libplp_uart_write_string_done_p3:
+	jr $t9			#go home
+	nop
